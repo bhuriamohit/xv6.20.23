@@ -177,9 +177,30 @@ consputc(int c)
     uartputc(c);
   cgaputc(c);
 }
+void consputs(const char* str) {
+    if (*str == '\0') {
+        return;
+    }
+
+    while (*str) {
+        consputc(*str);
+        str++;
+    }
+}
+char*
+strcpy(char *s, const char *t)
+{
+  char *os;
+
+  os = s;
+  while((*s++ = *t++) != 0)
+    ;
+  return os;
+}
 
 #define INPUT_BUF 128
-struct {
+#define MAX_HISTORY 16
+struct cons{
   char buf[INPUT_BUF];
   uint r;  // Read index
   uint w;  // Write index
@@ -188,15 +209,23 @@ struct {
 
 #define C(x)  ((x)-'@')  // Control-x
 
-void
-consoleintr(int (*getc)(void))
-{
+
+
+
+int historyindex=0;
+struct cons history[MAX_HISTORY+1];
+
+void consoleintr(int (*getc)(void)) {
   int c, doprocdump = 0;
+  
 
   acquire(&cons.lock);
-  while((c = getc()) >= 0){
-    switch(c){
-    case C('P'):  // Process listing.
+
+  while ((c = getc()) >= 0) {
+    switch (c) {
+    
+        
+        case C('P'):  // Process listing.
       // procdump() locks cons.lock indirectly; invoke later
       doprocdump = 1;
       break;
@@ -213,24 +242,104 @@ consoleintr(int (*getc)(void))
         consputc(BACKSPACE);
       }
       break;
-    default:
-      if(c != 0 && input.e-input.r < INPUT_BUF){
-        c = (c == '\r') ? '\n' : c;
-        input.buf[input.e++ % INPUT_BUF] = c;
-        consputc(c);
-        if(c == '\n' || c == C('D') || input.e == input.r+INPUT_BUF){
-          input.w = input.e;
-          wakeup(&input.r);
-        }
+           
+           
+        
+           
+         case '\x1B':
+        if (getc() == '[') {
+          int arrowKey = getc();
+         
+          if (arrowKey == 'A') {
+    // Up arrow key
+  
+    if (historyindex > 0) {
+        historyindex--;
+    }
+    int len = history[historyindex].e;
+    int id = 0;
+    while(input.e != input.w &&
+            input.buf[(input.e-1) % INPUT_BUF] != '\n'){
+        input.e--;
+        consputc(BACKSPACE);
       }
-      break;
+  
+    while (id < len) {
+        char historyChar = history[historyindex].buf[id];
+        input.buf[(input.w+id) % INPUT_BUF] = historyChar;
+        input.e++;
+        consputc(historyChar);
+        id++;
+    }
+}
+
+         else if (arrowKey == 'B') {
+            // Down arrow key
+          
+            
+            if (historyindex < MAX_HISTORY) {
+              historyindex++;
+            }
+            int len = history[historyindex].e;
+            int id = 0;
+        
+     while(input.e != input.w &&
+            input.buf[(input.e-1) % INPUT_BUF] != '\n'){
+        input.e--;
+        consputc(BACKSPACE);
+      }
+ 
+   
+   
+    while (id < len) {
+        char historyChar = history[historyindex].buf[id];
+        input.buf[(input.w+id) % INPUT_BUF] = historyChar;
+        input.e++;
+        consputc(historyChar);
+        id++;
+    }
+            
+          }
+        }
+        break;
+
+      default:
+        if (c != 0 && input.e - input.r < INPUT_BUF) {
+          c = (c == '\r') ? '\n' : c;
+          input.buf[input.e++ % INPUT_BUF] = c;
+          consputc(c);
+          if (c == '\n' || c == C('D') || input.e == input.r + INPUT_BUF) {
+            if (historyindex < MAX_HISTORY) {
+              int len = input.e - input.r;
+              if (len > 0) {
+                int i;
+                for (i = 0; i < len; i++) {
+                  if (input.buf[(input.w + i) % INPUT_BUF] != '\n') {
+                    history[historyindex].buf[i] = input.buf[(input.w + i) % INPUT_BUF];
+                  }
+                }
+                history[historyindex].e = len;
+                historyindex++;
+              }
+            }
+            input.w = input.e;
+            wakeup(&input.r);
+          }
+        }
+        break;
+
+
     }
   }
   release(&cons.lock);
-  if(doprocdump) {
-    procdump();  // now call procdump() wo. cons.lock held
+  if (doprocdump) {
+    procdump();
   }
 }
+
+          
+
+
 
 int
 consoleread(struct inode *ip, char *dst, int n)
