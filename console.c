@@ -1,3 +1,6 @@
+// up arrrow and down arrow are retrieveing history, just have to maintain them with some extra variables
+
+
 // Console input and output.
 // Input is from the keyboard or serial port.
 // Output is written to the screen and serial port.
@@ -16,7 +19,7 @@
 #include "x86.h"
 
 static void consputc(int);
-
+void saveCommandInHistory(void);
 static int panicked = 0;
 
 static struct {
@@ -160,6 +163,7 @@ cgaputc(int c)
   outb(CRTPORT, 15);
   outb(CRTPORT+1, pos);
   crt[pos] = ' ' | 0x0700;
+  //if (c != LEFT_ARROW && c != RIGHT_ARROW && flag != 1) crt[pos] = ' ' | 0x0700;
 }
 
 void
@@ -177,26 +181,7 @@ consputc(int c)
     uartputc(c);
   cgaputc(c);
 }
-void consputs(const char* str) {
-    if (*str == '\0') {
-        return;
-    }
 
-    while (*str) {
-        consputc(*str);
-        str++;
-    }
-}
-char*
-strcpy(char *s, const char *t)
-{
-  char *os;
-
-  os = s;
-  while((*s++ = *t++) != 0)
-    ;
-  return os;
-}
 
 #define INPUT_BUF 128
 #define MAX_HISTORY 16
@@ -210,6 +195,13 @@ struct cons{
 #define C(x)  ((x)-'@')  // Control-x
 
 
+void
+eraseline(void) {
+ while(input.e != input.w){
+        input.e--;
+        consputc(BACKSPACE);
+      }
+}
 
 
 int historyindex=0;
@@ -256,49 +248,39 @@ void consoleintr(int (*getc)(void)) {
     if (historyindex > 0) {
         historyindex--;
     }
-    int len = history[historyindex].e;
-    int id = 0;
-    while(input.e != input.w &&
-            input.buf[(input.e-1) % INPUT_BUF] != '\n'){
-        input.e--;
-        consputc(BACKSPACE);
-      }
   
-    while (id < len) {
-        char historyChar = history[historyindex].buf[id];
-        input.buf[(input.w+id) % INPUT_BUF] = historyChar;
-        input.e++;
-        consputc(historyChar);
-        id++;
-    }
+     eraseline();
+   int length=history[historyindex].e;
+   for(int i=0;i<history[historyindex].e;i++){
+char curr=history[historyindex].buf[i];
+input.buf[(input.r + i) % INPUT_BUF]= curr;
+ input.e = input.r + length;
+ 
+consputc(curr);
+}
+  
+   
 }
 
          else if (arrowKey == 'B') {
             // Down arrow key
-          
-            
-            if (historyindex < MAX_HISTORY) {
-              historyindex++;
-            }
-            int len = history[historyindex].e;
-            int id = 0;
-        
-     while(input.e != input.w &&
-            input.buf[(input.e-1) % INPUT_BUF] != '\n'){
-        input.e--;
-        consputc(BACKSPACE);
-      }
- 
-   
-   
-    while (id < len) {
-        char historyChar = history[historyindex].buf[id];
-        input.buf[(input.w+id) % INPUT_BUF] = historyChar;
-        input.e++;
-        consputc(historyChar);
-        id++;
+            if (historyindex <MAX_HISTORY-1) {
+        historyindex++;
     }
             
+           
+        
+   eraseline();
+   int length=history[historyindex].e;
+   for(int i=0;i<history[historyindex].e;i++){
+char curr=history[historyindex].buf[i];
+input.buf[(input.r + i) % INPUT_BUF]= curr;
+ input.e = input.r + length;
+ 
+consputc(curr);
+}
+   
+        
           }
         }
         break;
@@ -309,19 +291,7 @@ void consoleintr(int (*getc)(void)) {
           input.buf[input.e++ % INPUT_BUF] = c;
           consputc(c);
           if (c == '\n' || c == C('D') || input.e == input.r + INPUT_BUF) {
-            if (historyindex < MAX_HISTORY) {
-              int len = input.e - input.r;
-              if (len > 0) {
-                int i;
-                for (i = 0; i < len; i++) {
-                  if (input.buf[(input.w + i) % INPUT_BUF] != '\n') {
-                    history[historyindex].buf[i] = input.buf[(input.w + i) % INPUT_BUF];
-                  }
-                }
-                history[historyindex].e = len;
-                historyindex++;
-              }
-            }
+            saveCommandInHistory();
             input.w = input.e;
             wakeup(&input.r);
           }
@@ -338,7 +308,21 @@ void consoleintr(int (*getc)(void)) {
 }
 
           
+void saveCommandInHistory(){
+  uint len = input.e - input.r - 1; // -1 to remove the last '\n' character
+  if (len == 0) return; // to avoid blank commands to store in history
+  
 
+
+
+  // do not want to save in memory the last char '/n'
+  for (uint i = 0; i < len; i++) { 
+    history[historyindex].buf[i] =  input.buf[(input.r + i) % INPUT_BUF];
+  }
+  history[historyindex].e=len;
+  historyindex++;
+   historyindex%=MAX_HISTORY;
+}
 
 
 int
@@ -405,4 +389,3 @@ consoleinit(void)
 
   ioapicenable(IRQ_KBD, 0);
 }
-
