@@ -32,6 +32,18 @@
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
 static void consputc(int);
 
 void saveCommandInHistory(void);
@@ -406,7 +418,57 @@ eraseline(void) {
 
 int historyindex=0;
 
-struct cons history[MAX_HISTORY+1];
+int arrowindex=-1;
+
+struct cons history[MAX_HISTORY];
+
+
+
+int story(char *buff, int id) {
+
+    // Validate the history ID
+
+    if (id < 0 || id >= MAX_HISTORY ) {
+
+    
+
+        return 2; // Return 2 for an illegal history ID
+
+    }
+
+
+
+    int len = history[id].e;
+
+
+
+    // Ensure the buffer size is sufficient to hold the history entry
+
+    if (len <=0) {
+
+        return 1; // Return 1 if no history for the given ID
+
+    }
+
+
+
+    // Copy history entry to the provided buffer
+
+   
+
+  
+
+    memmove(buff, history[id].buf, len);
+
+    buff[len] = '\0'; // Null-terminate the string in the buffer
+
+
+
+    return 0; // Return 0 if history copied properly
+
+}
+
+
 
 
 
@@ -466,7 +528,7 @@ void consoleintr(int (*getc)(void)) {
 
            
 
-           
+ 
 
         
 
@@ -484,23 +546,29 @@ void consoleintr(int (*getc)(void)) {
 
     // Up arrow key
 
-  
+    
 
-    if (historyindex > 0) {
-
-        historyindex--;
-
-    }
+    if(arrowindex==-1){break;}
 
   
+
+     if(arrowindex>0 && arrowindex+MAX_HISTORY>historyindex){
+
+
+
+arrowindex--;
+
+}
 
      eraseline();
 
-   int length=history[historyindex].e;
+     
 
-   for(int i=0;i<history[historyindex].e;i++){
+   int length=history[arrowindex%MAX_HISTORY].e;
 
-char curr=history[historyindex].buf[i];
+   for(int i=0;i<history[arrowindex%MAX_HISTORY].e;i++){
+
+char curr=history[arrowindex%MAX_HISTORY].buf[i];
 
 input.buf[(input.r + i) % INPUT_BUF]= curr;
 
@@ -524,33 +592,47 @@ consputc(curr);
 
             // Down arrow key
 
-            if (historyindex <MAX_HISTORY-1) {
+             if(arrowindex==-1){break;}
+
+         /*   if (historyindex <MAX_HISTORY-1) {
 
         historyindex++;
 
     }
 
-            
+        */    
 
-           
+          
 
-        
+         if(arrowindex<historyindex){
+
+
+
+arrowindex++;
+
+}
 
    eraseline();
 
-   int length=history[historyindex].e;
+    
 
-   for(int i=0;i<history[historyindex].e;i++){
+  if(arrowindex<historyindex){ int length=history[arrowindex%MAX_HISTORY].e;
 
-char curr=history[historyindex].buf[i];
+   for(int i=0;i<history[arrowindex%MAX_HISTORY].e;i++){
+
+char curr=history[arrowindex%MAX_HISTORY].buf[i];
 
 input.buf[(input.r + i) % INPUT_BUF]= curr;
 
  input.e = input.r + length;
 
+ consputc(curr);
+
+ }
+
  
 
-consputc(curr);
+
 
 }
 
@@ -630,15 +712,17 @@ void saveCommandInHistory(){
 
   for (uint i = 0; i < len; i++) { 
 
-    history[historyindex].buf[i] =  input.buf[(input.r + i) % INPUT_BUF];
+    history[historyindex%MAX_HISTORY].buf[i] =  input.buf[(input.r + i) % INPUT_BUF];
 
   }
 
-  history[historyindex].e=len;
+  history[historyindex%MAX_HISTORY].e=len;
 
   historyindex++;
 
-   historyindex%=MAX_HISTORY;
+  arrowindex=historyindex;
+
+  
 
 }
 
@@ -767,8 +851,6 @@ consoleinit(void)
   devsw[CONSOLE].read = consoleread;
 
   cons.locking = 1;
-
-
 
   ioapicenable(IRQ_KBD, 0);
 
