@@ -8,7 +8,7 @@ typedef struct uproc {
     int pid;               // Process ID
     int parent_pid;        // Parent process ID
     uint size;             // Size of process memory (bytes)
-   char *state ; // Process state
+   char state[20] ; // Process state
     int waiting_on_chan;   // If non-zero, process is waiting on a channel
     int killed;            // If non-zero, process has been killed
 } uproc;

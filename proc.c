@@ -39,8 +39,8 @@ uproc piro look like
 };
 */
 
-void psin(void) {
-    cprintf("PID    Size     Name    Parent PID      Waiting on Chan      Killed\n");
+int sys_ps(int x) {
+    cprintf("PID    Size     Name    Parent PID      Waiting      Killed\n");
   cprintf("\n");
    struct proc *p;
 
@@ -58,6 +58,7 @@ void psin(void) {
         release(&ptable.lock);
     }
     cprintf("\n");
+    return 0;
 }
 
 
@@ -199,6 +200,15 @@ found:
   memset(p->context, 0, sizeof *p->context);
   p->context->eip = (uint)forkret;
 
+
+
+//stat
+acquire(&tickslock);
+        p->ctime = ticks;
+        release(&tickslock);
+        p->stime = 0;
+        p->retime = 0;
+        p->rutime = 0;
   return p;
 }
 
@@ -350,6 +360,7 @@ exit(void)
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
+  
   sched();
   panic("zombie exit");
 }
@@ -398,6 +409,18 @@ wait(void)
   }
 }
 
+
+
+//PAGEBREAK: 42
+// Per-CPU process scheduler.
+// Each CPU calls scheduler() after setting itself up.
+// Scheduler never returns.  It loops, doing:
+//  - choose a process to run
+//  - swtch to start running that process
+//  - eventually that process transfers control
+//      via swtch back to the scheduler.
+
+
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -440,6 +463,8 @@ scheduler(void)
     release(&ptable.lock);
 
   }
+  
+ 
 }
 
 // Enter scheduler.  Must hold only ptable.lock
@@ -476,6 +501,7 @@ yield(void)
   myproc()->state = RUNNABLE;
   sched();
   release(&ptable.lock);
+
 }
 
 // A fork child's very first scheduling by scheduler()
@@ -536,6 +562,7 @@ sleep(void *chan, struct spinlock *lk)
     release(&ptable.lock);
     acquire(lk);
   }
+
 }
 
 //PAGEBREAK!
@@ -545,7 +572,7 @@ static void
 wakeup1(void *chan)
 {
   struct proc *p;
-
+ 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan)
       p->state = RUNNABLE;

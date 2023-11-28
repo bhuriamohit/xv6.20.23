@@ -15,8 +15,14 @@
 #include "proc.h"
 #include "x86.h"
 
-static void consputc(int);
 
+
+
+
+
+
+static void consputc(int);
+void saveCommandInHistory(void);
 static int panicked = 0;
 
 static struct {
@@ -160,6 +166,7 @@ cgaputc(int c)
   outb(CRTPORT, 15);
   outb(CRTPORT+1, pos);
   crt[pos] = ' ' | 0x0700;
+  //if (c != LEFT_ARROW && c != RIGHT_ARROW && flag != 1) crt[pos] = ' ' | 0x0700;
 }
 
 void
@@ -177,26 +184,7 @@ consputc(int c)
     uartputc(c);
   cgaputc(c);
 }
-void consputs(const char* str) {
-    if (*str == '\0') {
-        return;
-    }
 
-    while (*str) {
-        consputc(*str);
-        str++;
-    }
-}
-char*
-strcpy(char *s, const char *t)
-{
-  char *os;
-
-  os = s;
-  while((*s++ = *t++) != 0)
-    ;
-  return os;
-}
 
 #define INPUT_BUF 128
 #define MAX_HISTORY 16
@@ -210,10 +198,42 @@ struct cons{
 #define C(x)  ((x)-'@')  // Control-x
 
 
+void
+eraseline(void) {
+ while(input.e != input.w){
+        input.e--;
+        consputc(BACKSPACE);
+      }
+}
 
 
 int historyindex=0;
-struct cons history[MAX_HISTORY+1];
+int arrowindex=-1;
+struct cons history[MAX_HISTORY];
+
+int story(char *buff, int id) {
+    // Validate the history ID
+    if (id < 0 || id >= MAX_HISTORY ) {
+    
+        return 2; // Return 2 for an illegal history ID
+    }
+
+    int len = history[id].e;
+
+    // Ensure the buffer size is sufficient to hold the history entry
+    if (len <=0) {
+        return 1; // Return 1 if no history for the given ID
+    }
+
+    // Copy history entry to the provided buffer
+   
+  
+    memmove(buff, history[id].buf, len);
+    buff[len] = '\0'; // Null-terminate the string in the buffer
+
+    return 0; // Return 0 if history copied properly
+}
+
 
 void consoleintr(int (*getc)(void)) {
   int c, doprocdump = 0;
@@ -243,7 +263,7 @@ void consoleintr(int (*getc)(void)) {
       }
       break;
            
-           
+ 
         
            
          case '\x1B':
@@ -252,53 +272,53 @@ void consoleintr(int (*getc)(void)) {
          
           if (arrowKey == 'A') {
     // Up arrow key
+    
+    if(arrowindex==-1){break;}
   
-    if (historyindex > 0) {
-        historyindex--;
-    }
-    int len = history[historyindex].e;
-    int id = 0;
-    while(input.e != input.w &&
-            input.buf[(input.e-1) % INPUT_BUF] != '\n'){
-        input.e--;
-        consputc(BACKSPACE);
-      }
+     if(arrowindex>0 && arrowindex+MAX_HISTORY>historyindex){
+
+arrowindex--;
+}
+     eraseline();
+     
+   int length=history[arrowindex%MAX_HISTORY].e;
+   for(int i=0;i<history[arrowindex%MAX_HISTORY].e;i++){
+char curr=history[arrowindex%MAX_HISTORY].buf[i];
+input.buf[(input.r + i) % INPUT_BUF]= curr;
+ input.e = input.r + length;
+ 
+consputc(curr);
+}
   
-    while (id < len) {
-        char historyChar = history[historyindex].buf[id];
-        input.buf[(input.w+id) % INPUT_BUF] = historyChar;
-        input.e++;
-        consputc(historyChar);
-        id++;
-    }
+   
 }
 
          else if (arrowKey == 'B') {
             // Down arrow key
-          
-            
-            if (historyindex < MAX_HISTORY) {
-              historyindex++;
-            }
-            int len = history[historyindex].e;
-            int id = 0;
-        
-     while(input.e != input.w &&
-            input.buf[(input.e-1) % INPUT_BUF] != '\n'){
-        input.e--;
-        consputc(BACKSPACE);
-      }
- 
-   
-   
-    while (id < len) {
-        char historyChar = history[historyindex].buf[id];
-        input.buf[(input.w+id) % INPUT_BUF] = historyChar;
-        input.e++;
-        consputc(historyChar);
-        id++;
+             if(arrowindex==-1){break;}
+         /*   if (historyindex <MAX_HISTORY-1) {
+        historyindex++;
     }
-            
+        */    
+          
+         if(arrowindex<historyindex){
+
+arrowindex++;
+}
+   eraseline();
+    
+  if(arrowindex<historyindex){ int length=history[arrowindex%MAX_HISTORY].e;
+   for(int i=0;i<history[arrowindex%MAX_HISTORY].e;i++){
+char curr=history[arrowindex%MAX_HISTORY].buf[i];
+input.buf[(input.r + i) % INPUT_BUF]= curr;
+ input.e = input.r + length;
+ consputc(curr);
+ }
+ 
+
+}
+   
+        
           }
         }
         break;
@@ -309,19 +329,7 @@ void consoleintr(int (*getc)(void)) {
           input.buf[input.e++ % INPUT_BUF] = c;
           consputc(c);
           if (c == '\n' || c == C('D') || input.e == input.r + INPUT_BUF) {
-            if (historyindex < MAX_HISTORY) {
-              int len = input.e - input.r;
-              if (len > 0) {
-                int i;
-                for (i = 0; i < len; i++) {
-                  if (input.buf[(input.w + i) % INPUT_BUF] != '\n') {
-                    history[historyindex].buf[i] = input.buf[(input.w + i) % INPUT_BUF];
-                  }
-                }
-                history[historyindex].e = len;
-                historyindex++;
-              }
-            }
+            saveCommandInHistory();
             input.w = input.e;
             wakeup(&input.r);
           }
@@ -338,7 +346,22 @@ void consoleintr(int (*getc)(void)) {
 }
 
           
+void saveCommandInHistory(){
+  uint len = input.e - input.r - 1; // -1 to remove the last '\n' character
+  if (len == 0) return; // to avoid blank commands to store in history
+  
 
+
+
+  // do not want to save in memory the last char '/n'
+  for (uint i = 0; i < len; i++) { 
+    history[historyindex%MAX_HISTORY].buf[i] =  input.buf[(input.r + i) % INPUT_BUF];
+  }
+  history[historyindex%MAX_HISTORY].e=len;
+  historyindex++;
+  arrowindex=historyindex;
+  
+}
 
 
 int
@@ -402,7 +425,6 @@ consoleinit(void)
   devsw[CONSOLE].write = consolewrite;
   devsw[CONSOLE].read = consoleread;
   cons.locking = 1;
-
   ioapicenable(IRQ_KBD, 0);
 }
 

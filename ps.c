@@ -7,12 +7,24 @@
 
 int main(int argc, char *argv[])
 {
+
+ int x;
+
+x=ps(0);
+
+  
+
    
+    
 
-int x=ps(0);
+    
+    return x;
 
+  
+  
+  }
+  
+  
 
-  return x;
-}
 
 

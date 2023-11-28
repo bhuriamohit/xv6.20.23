@@ -6,7 +6,9 @@
 #include "defs.h"
 #include "x86.h"
 void printProcessDetails(int x, uproc piro);
-void psin(void);
+int story(char *buff, int id);
+
+
 
 int sys_getprocinfo(void) {
     int num;
@@ -26,15 +28,26 @@ int sys_getprocinfo(void) {
 
     return 0;
 }
+int sys_history(void) {
+    char *buff; // Define a pointer variable
+    int id;
 
-int sys_ps(void)
-{
+    // Use a temporary variable to hold the pointer to the buffer
+    char *temp_buff;
 
+    if (argptr(0, (void*)&temp_buff, sizeof(char *)) < 0 || argint(1, &id) < 0) {
+        return -1;
+    }
 
-psin();
-return 0;
+    // Assign the buffer pointer from temp_buff to buff
+    buff = temp_buff;
+
+    return story(buff, id);
 }
-int
+
+
+int 
+
 sys_fork(void)
 {
   return fork();
