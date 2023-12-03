@@ -24,8 +24,8 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int getprocinfo(int pid,uproc * details);
-int ps(int pid);
 int history(char buff[],int id);
+int wait2(int *a,int *b, int *c);
 // ulib.c
 int stat(const char*, struct stat*);
 char* strcpy(char*, const char*);

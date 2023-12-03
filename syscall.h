@@ -21,7 +21,6 @@
 #define SYS_mkdir  20
 #define SYS_close  21
 #define SYS_getprocinfo 22
-#define SYS_ps 23
+#define SYS_history 23
 #define SYS_wait2  24
-#define SYS_history 25
 

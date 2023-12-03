@@ -5,9 +5,21 @@
 #include "proc.h"
 #include "defs.h"
 #include "x86.h"
-void printProcessDetails(int x, uproc piro);
-int story(char *buff, int id);
+void getprocinfo(int x, uproc piro);
 
+int history(char *buff, int id);
+
+int sys_wait2(void){
+
+int *retime,*rutime,*stime;
+
+if(argptr(0, (void*)&retime,sizeof(int)) < 0 || argptr(1, (void*)&rutime,sizeof(int)) < 0 || argptr(2, (void*)&stime,sizeof(int)) < 0){
+return -1;}
+
+
+
+return wait2(retime,rutime,stime);
+}
 
 
 int sys_getprocinfo(void) {
@@ -24,7 +36,7 @@ int sys_getprocinfo(void) {
     }
 
     // Call the function to print process details
-    printProcessDetails(num, piro); // Pass the uproc structure, not a pointer
+    getprocinfo(num, piro); // Pass the uproc structure, not a pointer
 
     return 0;
 }
@@ -33,16 +45,16 @@ int sys_history(void) {
     int id;
 
     // Use a temporary variable to hold the pointer to the buffer
-    char *temp_buff;
+    char *temp;
 
-    if (argptr(0, (void*)&temp_buff, sizeof(char *)) < 0 || argint(1, &id) < 0) {
+    if (argptr(0, (void*)&temp, sizeof(char *)) < 0 || argint(1, &id) < 0) {
         return -1;
     }
 
-    // Assign the buffer pointer from temp_buff to buff
-    buff = temp_buff;
+    
+    buff = temp;
 
-    return story(buff, id);
+    return history(buff, id);
 }
 
 

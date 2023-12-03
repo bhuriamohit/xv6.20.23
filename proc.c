@@ -6,73 +6,16 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "stat.h"
 
 struct {
     struct spinlock lock;
     struct proc proc[NPROC];
 } ptable;
 
-/*
-struct proc {
-  uint sz;                     // Size of process memory (bytes)
-  pde_t* pgdir;                // Page table
-  char *kstack;                // Bottom of kernel stack for this process
-  enum procstate state;        // Process state
-  int pid;                     // Process ID
-  struct proc *parent;         // Parent process
-  struct trapframe *tf;        // Trap frame for current syscall
-  struct context *context;     // swtch() here to run process
-  void *chan;                  // If non-zero, sleeping on chan
-  int killed;                  // If non-zero, have been killed
-  struct file *ofile[NOFILE];  // Open files
-  struct inode *cwd;           // Current directory
-  char name[16];               // Process name (debugging)
-   
-uproc piro look like
- char name[16];         // Process name (debugging)
-    int pid;               // Process ID
-    int parent_pid;        // Parent process ID
-    uint size;             // Size of process memory (bytes)
-    char state[16];        // Process state (as a string)
-    int waiting_on_chan;   // If non-zero, process is waiting on a channel
-    int killed;            // If non-zero, process has been killed
-};
-*/
-
-int sys_ps(int x) {
-    cprintf("PID    Size     Name    Parent PID      Waiting      Killed\n");
-  cprintf("\n");
-   struct proc *p;
-
-   for (int i=0; i<NPROC; i++) {
-   p=&ptable.proc[i];
-        acquire(&ptable.lock);
-
-        if (p->state != UNUSED && p->pid>=0) {
-            cprintf("%d    %d         %s                %d                %d         %d\n",
-                    p->pid, p->sz, p->name, (p->parent ? p->parent->pid : -1),
-                    (p->chan != 0) ? 1 : 0, p->killed);
-                     cprintf("\n");
-        }
-
-        release(&ptable.lock);
-    }
-    cprintf("\n");
-    return 0;
-}
-
-
-
-
-void printProcessDetails(int pid,uproc *piro) {
+void getprocinfo(int pid,uproc *piro) {
     struct proc *p;
-
-    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-        acquire(&ptable.lock);
-
-        if (p->pid == pid) {
-            // Map enum procstate to strings
-            static char *states[] = {
+static char *states[] = {
                 [UNUSED]    "UNUSED",
                 [EMBRYO]    "EMBRYO",
                 [SLEEPING]  "SLEEPING",
@@ -80,26 +23,37 @@ void printProcessDetails(int pid,uproc *piro) {
                 [RUNNING]   "RUNNING",
                 [ZOMBIE]    "ZOMBIE"
             };
+                strncpy(piro->state, states[UNUSED], sizeof(piro->state));
+   acquire(&ptable.lock);
+    for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    
+        
+
+        if (p->pid == pid) {
+            // Map enum procstate to strings
+            
 
             strncpy(piro->name, p->name, sizeof(piro->name));
             piro->pid = p->pid;
             piro->parent_pid = (p->parent ? p->parent->pid : -1);
             piro->size = p->sz;
             strncpy(piro->state, states[p->state], sizeof(piro->state));
-            piro->waiting_on_chan = (p->chan != 0) ? 1 : 0;
+            piro->waiting = (p->chan != 0) ? 1 : 0;
             piro->killed = p->killed;
 
             release(&ptable.lock);
             return;
         }
 
-        release(&ptable.lock);
+       
     }
-
-    cprintf("Process with PID %d not found.\n", pid);
-   return;
+  release(&ptable.lock);
+    return;
 }
 
+//
+
+//
 static struct proc *initproc;
 
 int nextpid = 1;
@@ -139,6 +93,9 @@ mycpu(void)
   }
   panic("unknown apicid\n");
 }
+
+
+
 
 // Disable interrupts so that we are not rescheduled
 // while reading proc from the cpu structure
@@ -202,7 +159,7 @@ found:
 
 
 
-//stat
+
 acquire(&tickslock);
         p->ctime = ticks;
         release(&tickslock);
@@ -312,6 +269,7 @@ fork(void)
   acquire(&ptable.lock);
 
   np->state = RUNNABLE;
+np->ctime=ticks;
 
   release(&ptable.lock);
 
@@ -327,6 +285,8 @@ exit(void)
   struct proc *curproc = myproc();
   struct proc *p;
   int fd;
+//stats
+  
 
   if(curproc == initproc)
     panic("init exiting");
@@ -408,6 +368,56 @@ wait(void)
     sleep(curproc, &ptable.lock);  //DOC: wait-sleep
   }
 }
+
+//
+
+int
+wait2(int *a, int *b,int *c)
+{
+  struct proc *p;
+  int havekids, pid;
+  struct proc *curproc = myproc();
+  
+  acquire(&ptable.lock);
+  for(;;){
+    // Scan through table looking for exited children.
+    havekids = 0;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->parent != curproc)
+        continue;
+      havekids = 1;
+      if(p->state == ZOMBIE){
+        // Found one.
+        pid = p->pid;
+        kfree(p->kstack);
+        p->kstack = 0;
+        freevm(p->pgdir);
+        *a=p->retime;
+        *b=p->rutime;
+        *c=p->stime;
+      
+        p->pid = 0;
+        p->parent = 0;
+        p->name[0] = 0;
+        p->killed = 0;
+        p->state = UNUSED;
+        release(&ptable.lock);
+        return pid;
+      }
+    }
+
+    // No point waiting if we don't have any children.
+    if(!havekids || curproc->killed){
+      release(&ptable.lock);
+      return -1;
+    }
+
+    // Wait for children to exit.  (See wakeup1 call in proc_exit.)
+    sleep(curproc, &ptable.lock);  //DOC: wait-sleep
+  }
+}
+
+
 
 
 
@@ -550,6 +560,9 @@ sleep(void *chan, struct spinlock *lk)
   }
   // Go to sleep.
   p->chan = chan;
+  
+  
+  
   p->state = SLEEPING;
 
   sched();
@@ -573,9 +586,14 @@ wakeup1(void *chan)
 {
   struct proc *p;
  
+ 
+ 
+ 
+ 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan)
-      p->state = RUNNABLE;
+     { 
+      p->state = RUNNABLE;}
 }
 
 // Wake up all processes sleeping on chan.
@@ -647,4 +665,29 @@ procdump(void)
   }
 }
 
+
+void add_tick_effect(void)
+{
+
+    struct proc *p;
+  
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+  {
+
+    if (p->state == RUNNING)
+    {
+      p->rutime++;
+    }
+    else if (p->state == RUNNABLE)
+    {
+      p->retime++;
+    }
+    else if (p->state == SLEEPING)
+    {
+      p->stime++;
+    }
+  }
+
+
+}
 

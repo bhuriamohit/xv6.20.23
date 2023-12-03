@@ -3,16 +3,19 @@
 #include "types.h"
 #include "user.h"
 #include "fcntl.h"
-
+//#include "console.h" //header file with all history functions needed
+int count=0;
 // Parsed command representation
 #define EXEC  1
 #define REDIR 2
 #define PIPE  3
 #define LIST  4
 #define BACK  5
-
+#define MAX_HISTORY 16
 #define MAXARGS 10
 
+//int getarrowindex(void);
+//extern int arrowindex;
 struct cmd {
   int type;
 };
@@ -52,6 +55,26 @@ struct backcmd {
 int fork1(void);  // Fork but panics on failure.
 void panic(char*);
 struct cmd *parsecmd(char*);
+
+//History command code here!
+char historybuff[128]; // buffer for saving hisotry by syscall
+
+void printhistorycommand() {
+int i=count-MAX_HISTORY;
+if(i<0){
+i=0;}
+
+  for (; i<count;i++) {
+    int y=history(historybuff, i%MAX_HISTORY);
+    if (y == 0) { 
+     
+     
+        printf(1," %s\n", historybuff);
+     
+    }
+  }
+}
+
 
 // Execute cmd.  Never returns.
 void
@@ -146,7 +169,11 @@ main(void)
 {
   static char buf[100];
   int fd;
-
+  int retime, rutime, stime, pid;
+  retime = 0;
+  rutime =0;
+  stime  =0;
+  pid = 0;
   // Ensure that three file descriptors are open.
   while((fd = open("console", O_RDWR)) >= 0){
     if(fd >= 3){
@@ -156,17 +183,36 @@ main(void)
   }
 
   // Read and run input commands.
-  while(getcmd(buf, sizeof(buf)) >= 0){
-    if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
+  while(getcmd(buf, sizeof(buf)) >= 0)
+  {count++;
+  
+    if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' ')
+    {
       // Chdir must be called by the parent, not the child.
       buf[strlen(buf)-1] = 0;  // chop \n
       if(chdir(buf+3) < 0)
         printf(2, "cannot cd %s\n", buf+3);
       continue;
     }
-    if(fork1() == 0)
+     if(buf[0] == 'h' && buf[1] == 'i' && buf[2] == 's' && buf[3] == 't'
+        && buf[4] == 'o' && buf[5] == 'r' && buf[6] == 'y' && buf[7] == '\n') 
+    {
+      printhistorycommand();
+      continue;
+    }
+    if(fork1() != 0)
+    {
+      //this is parent, wait here
+      pid=wait2(&retime, &rutime, &stime);
+     
+     if(pid!=-1)printf(1 ,"pid:%d retime:%d rutime:%d stime:%d\n", pid, retime, rutime, stime);
+    }
+    else
+    { 
+      //this is child execute here
       runcmd(parsecmd(buf));
-    wait();
+    }
+ 
   }
   exit();
 }
